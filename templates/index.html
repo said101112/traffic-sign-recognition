@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Traffic Sign Recognizer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  </head>
+  <body>
+    <main class="page-shell">
+      <section class="hero-panel">
+        <p class="eyebrow">Traffic Sign Vision</p>
+        <h1>Upload a road sign image and get the predicted label instantly.</h1>
+        <p class="lead">
+          This interface uses the trained 43-class model saved in
+          <code>artifacts/best_model.pt</code>.
+        </p>
+      </section>
+
+      <section class="workspace-grid">
+        <article class="card form-card">
+          <h2>Test an image</h2>
+          <form method="post" enctype="multipart/form-data" class="upload-form">
+            <label class="upload-box" for="image">
+              <span class="upload-title">Choose a traffic sign image</span>
+              <span class="upload-subtitle">PNG, JPG, JPEG, BMP or PPM</span>
+              <input id="image" type="file" name="image" accept="image/*" />
+            </label>
+            <button type="submit" class="submit-button">Run prediction</button>
+          </form>
+
+          {% if error_message %}
+          <div class="message error">{{ error_message }}</div>
+          {% endif %}
+        </article>
+
+        <article class="card result-card">
+          {% if predictions %}
+          <div class="result-header">
+            <p class="result-kicker">Best prediction</p>
+            <h2>{{ predictions[0].label }}</h2>
+            <p class="confidence">
+              Confidence: {{ "%.2f"|format(predictions[0].score * 100) }}%
+            </p>
+          </div>
+
+          <div class="result-layout">
+            <div class="preview-frame">
+              <img src="{{ preview_url }}" alt="Uploaded sign preview" />
+            </div>
+
+            <div class="ranking-panel">
+              <h3>Top predictions</h3>
+              <ol class="ranking-list">
+                {% for prediction in predictions %}
+                <li>
+                  <div class="ranking-row">
+                    <span class="label">{{ prediction.label }}</span>
+                    <span class="score">{{ "%.2f"|format(prediction.score * 100) }}%</span>
+                  </div>
+                  <div class="bar-track">
+                    <div
+                      class="bar-fill"
+                      style="width: {{ "%.2f"|format(prediction.score * 100) }}%;"
+                    ></div>
+                  </div>
+                  <p class="class-id">Class ID: {{ prediction.class_id }}</p>
+                </li>
+                {% endfor %}
+              </ol>
+            </div>
+          </div>
+          {% else %}
+          <div class="empty-state">
+            <p class="empty-title">Prediction results will appear here.</p>
+            <p class="empty-copy">
+              Submit an image to see the detected label, confidence score and the
+              top alternatives.
+            </p>
+          </div>
+          {% endif %}
+        </article>
+      </section>
+    </main>
+  </body>
+</html>
+

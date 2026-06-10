@@ -1,0 +1,7 @@
+artifacts/
+__pycache__/
+*.pyc
+
+rapp.latex
+report_assets
+generate_report_assets.py
