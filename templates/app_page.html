@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    {% include 'components/head.html' %}
+  </head>
+  <body class="dashboard-body">
+    <header class="dashboard-header">
+      <div class="header-container">
+        <div class="header-left">
+          <a href="{{ url_for('index') }}" class="back-link">&larr; Accueil</a>
+          <h2 class="app-title">Traffic Sign Vision</h2>
+        </div>
+        <div class="header-right">
+          <span class="status-badge"><span class="status-dot"></span> Model Online</span>
+        </div>
+      </div>
+    </header>
+    <main class="page-shell app-shell">
+
+      <section class="workspace-grid">
+        {% include 'components/input_card.html' %}
+        {% include 'components/result_card.html' %}
+      </section>
+    </main>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>

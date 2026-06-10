@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    {% include 'components/head.html' %}
+  </head>
+  <body class="landing-body">
+    <main class="page-shell landing-shell">
+      {% include 'components/header.html' %}
+      
+      <div class="landing-actions">
+        <a href="{{ url_for('app_page') }}" class="submit-button cta-button">Commencer l'application</a>
+      </div>
+    </main>
+  </body>
+</html>

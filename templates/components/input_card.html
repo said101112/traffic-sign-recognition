@@ -1,0 +1,93 @@
+<article class="card form-card">
+  <div class="panel-heading">
+    <div>
+      <p class="section-kicker">Input mode</p>
+      <h2>Test an image</h2>
+    </div>
+    <p class="panel-copy">Switch modes whenever you want.</p>
+  </div>
+
+  <div class="mode-switch" role="tablist" aria-label="Prediction mode">
+    <button
+      type="button"
+      class="mode-button is-active"
+      data-mode-target="upload"
+      aria-pressed="true"
+    >
+      Upload image
+    </button>
+    <button
+      type="button"
+      class="mode-button"
+      data-mode-target="webcam"
+      aria-pressed="false"
+    >
+      Webcam live
+    </button>
+  </div>
+
+  <section class="mode-panel is-active" data-mode-panel="upload">
+    <form method="post" enctype="multipart/form-data" class="upload-form" action="{{ url_for('app_page') }}">
+      <label class="upload-box" for="image">
+        <span class="upload-title">Choose a traffic sign image</span>
+        <span class="upload-subtitle">Desktop upload or phone camera shortcut</span>
+        <input
+          id="image"
+          type="file"
+          name="image"
+          accept="image/*"
+          capture="environment"
+        />
+      </label>
+
+      <button type="submit" class="submit-button">Run prediction</button>
+    </form>
+
+    {% if error_message %}
+    <div class="message error">{{ error_message }}</div>
+    {% endif %}
+  </section>
+
+  <section class="mode-panel" data-mode-panel="webcam" hidden>
+    <div class="camera-card">
+      <div class="camera-copy">
+        <p class="camera-title">Real-time webcam detection</p>
+        <p class="camera-subtitle">
+          Start the camera and the app will analyze the current frame
+          continuously. Use this mode to see where the sign is and what
+          the model thinks in near real time.
+        </p>
+      </div>
+
+      <div class="camera-actions">
+        <button type="button" class="secondary-button" id="start-camera">
+          Start webcam
+        </button>
+        <button type="button" class="ghost-button" id="stop-camera" disabled>
+          Stop webcam
+        </button>
+      </div>
+
+      <div class="camera-stage live-camera-stage">
+        <video id="camera-stream" playsinline muted></video>
+        <canvas id="camera-canvas" hidden></canvas>
+        <div class="camera-placeholder" id="camera-placeholder">
+          <p class="camera-placeholder-title">Live feed preview</p>
+          <p class="camera-placeholder-copy">
+            The analyzed frame will appear in the results panel while the
+            webcam runs here.
+          </p>
+        </div>
+      </div>
+
+      <p class="camera-status" id="camera-status">
+        Webcam idle. Start it to launch live detection.
+      </p>
+
+      <div class="camera-hints">
+        <p>Analysis runs automatically every few moments.</p>
+        <p>Good lighting and a steady sign improve the result.</p>
+      </div>
+    </div>
+  </section>
+</article>

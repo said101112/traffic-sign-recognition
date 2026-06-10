@@ -155,8 +155,13 @@ def analyze_image(image: Image.Image, source_mode: str) -> dict[str, Any]:
     }
 
 
-@app.route("/", methods=["GET", "POST"])
+@app.route("/")
 def index():
+    return render_template("landing.html")
+
+
+@app.route("/app", methods=["GET", "POST"])
+def app_page():
     error_message = None
     preview_url = None
     predictions = None
@@ -187,7 +192,7 @@ def index():
                 error_message = f"Prediction failed: {exc}"
 
     return render_template(
-        "index.html",
+        "app_page.html",
         error_message=error_message,
         preview_url=preview_url,
         localized_preview_url=localized_preview_url,
