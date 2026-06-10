@@ -10,78 +10,228 @@
     <main class="page-shell">
       <section class="hero-panel">
         <p class="eyebrow">Traffic Sign Vision</p>
-        <h1>Upload a road sign image and get the predicted label instantly.</h1>
+        <h1>Choose upload or webcam live mode and detect road signs with localization.</h1>
         <p class="lead">
-          This interface uses the trained 43-class model saved in
-          <code>artifacts/best_model.pt</code>.
+          The app classifies traffic signs with the trained 43-class model in
+          <code>artifacts/best_model.pt</code>, highlights the detected sign area
+          and can analyze webcam frames continuously.
         </p>
       </section>
 
       <section class="workspace-grid">
         <article class="card form-card">
-          <h2>Test an image</h2>
-          <form method="post" enctype="multipart/form-data" class="upload-form">
-            <label class="upload-box" for="image">
-              <span class="upload-title">Choose a traffic sign image</span>
-              <span class="upload-subtitle">PNG, JPG, JPEG, BMP or PPM</span>
-              <input id="image" type="file" name="image" accept="image/*" />
-            </label>
-            <button type="submit" class="submit-button">Run prediction</button>
-          </form>
+          <div class="panel-heading">
+            <div>
+              <p class="section-kicker">Input mode</p>
+              <h2>Test an image</h2>
+            </div>
+            <p class="panel-copy">Switch modes whenever you want.</p>
+          </div>
 
-          {% if error_message %}
-          <div class="message error">{{ error_message }}</div>
-          {% endif %}
+          <div class="mode-switch" role="tablist" aria-label="Prediction mode">
+            <button
+              type="button"
+              class="mode-button is-active"
+              data-mode-target="upload"
+              aria-pressed="true"
+            >
+              Upload image
+            </button>
+            <button
+              type="button"
+              class="mode-button"
+              data-mode-target="webcam"
+              aria-pressed="false"
+            >
+              Webcam live
+            </button>
+          </div>
+
+          <section class="mode-panel is-active" data-mode-panel="upload">
+            <form method="post" enctype="multipart/form-data" class="upload-form">
+              <label class="upload-box" for="image">
+                <span class="upload-title">Choose a traffic sign image</span>
+                <span class="upload-subtitle">Desktop upload or phone camera shortcut</span>
+                <input
+                  id="image"
+                  type="file"
+                  name="image"
+                  accept="image/*"
+                  capture="environment"
+                />
+              </label>
+
+              <button type="submit" class="submit-button">Run prediction</button>
+            </form>
+
+            {% if error_message %}
+            <div class="message error">{{ error_message }}</div>
+            {% endif %}
+          </section>
+
+          <section class="mode-panel" data-mode-panel="webcam" hidden>
+            <div class="camera-card">
+              <div class="camera-copy">
+                <p class="camera-title">Real-time webcam detection</p>
+                <p class="camera-subtitle">
+                  Start the camera and the app will analyze the current frame
+                  continuously. Use this mode to see where the sign is and what
+                  the model thinks in near real time.
+                </p>
+              </div>
+
+              <div class="camera-actions">
+                <button type="button" class="secondary-button" id="start-camera">
+                  Start webcam
+                </button>
+                <button type="button" class="ghost-button" id="stop-camera" disabled>
+                  Stop webcam
+                </button>
+              </div>
+
+              <div class="camera-stage live-camera-stage">
+                <video id="camera-stream" playsinline muted></video>
+                <canvas id="camera-canvas" hidden></canvas>
+                <div class="camera-placeholder" id="camera-placeholder">
+                  <p class="camera-placeholder-title">Live feed preview</p>
+                  <p class="camera-placeholder-copy">
+                    The analyzed frame will appear in the results panel while the
+                    webcam runs here.
+                  </p>
+                </div>
+              </div>
+
+              <p class="camera-status" id="camera-status">
+                Webcam idle. Start it to launch live detection.
+              </p>
+
+              <div class="camera-hints">
+                <p>Analysis runs automatically every few moments.</p>
+                <p>Good lighting and a steady sign improve the result.</p>
+              </div>
+            </div>
+          </section>
         </article>
 
         <article class="card result-card">
-          {% if predictions %}
-          <div class="result-header">
-            <p class="result-kicker">Best prediction</p>
-            <h2>{{ predictions[0].label }}</h2>
-            <p class="confidence">
-              Confidence: {{ "%.2f"|format(predictions[0].score * 100) }}%
-            </p>
-          </div>
-
-          <div class="result-layout">
-            <div class="preview-frame">
-              <img src="{{ preview_url }}" alt="Uploaded sign preview" />
+          <div id="upload-result-view" class="result-view">
+            {% if predictions %}
+            <div class="result-header">
+              <p class="result-kicker">Best prediction</p>
+              <h2>{{ predictions[0].label }}</h2>
+              <p class="confidence">
+                Confidence: {{ "%.2f"|format(predictions[0].score * 100) }}%
+              </p>
+              {% if detection_message %}
+              <p class="detection-note">{{ detection_message }}</p>
+              {% endif %}
+              {% if source_mode %}
+              <p class="source-pill">Source: {{ source_mode }}</p>
+              {% endif %}
             </div>
 
-            <div class="ranking-panel">
-              <h3>Top predictions</h3>
-              <ol class="ranking-list">
-                {% for prediction in predictions %}
-                <li>
-                  <div class="ranking-row">
-                    <span class="label">{{ prediction.label }}</span>
-                    <span class="score">{{ "%.2f"|format(prediction.score * 100) }}%</span>
+            <div class="result-layout">
+              <div class="preview-stack">
+                <div class="preview-frame">
+                  <img src="{{ preview_url }}" alt="Uploaded sign preview" />
+                </div>
+
+                {% if localized_preview_url %}
+                <div class="crop-panel">
+                  <p class="crop-title">Detected sign crop</p>
+                  <div class="crop-frame">
+                    <img src="{{ localized_preview_url }}" alt="Detected sign crop" />
                   </div>
-                  <div class="bar-track">
-                    <div
-                      class="bar-fill"
-                      style="width: {{ "%.2f"|format(prediction.score * 100) }}%;"
-                    ></div>
+                </div>
+                {% endif %}
+              </div>
+
+              <div class="ranking-panel">
+                <h3>Top predictions</h3>
+                <ol class="ranking-list">
+                  {% for prediction in predictions %}
+                  <li>
+                    <div class="ranking-row">
+                      <span class="label">{{ prediction.label }}</span>
+                      <span class="score">{{ "%.2f"|format(prediction.score * 100) }}%</span>
+                    </div>
+                    <div class="bar-track">
+                      <div
+                        class="bar-fill"
+                        style="width: {{ "%.2f"|format(prediction.score * 100) }}%;"
+                      ></div>
+                    </div>
+                    <p class="class-id">Class ID: {{ prediction.class_id }}</p>
+                  </li>
+                  {% endfor %}
+                </ol>
+              </div>
+            </div>
+            {% else %}
+            <div class="empty-state">
+              <p class="empty-title">Prediction results will appear here.</p>
+              <p class="empty-copy">
+                Use upload mode for a single image or switch to webcam mode for
+                a continuously updated prediction feed.
+              </p>
+            </div>
+            {% endif %}
+          </div>
+
+          <div id="live-result-view" class="result-view live-result-view" hidden>
+            <div class="result-header">
+              <p class="result-kicker">Live webcam prediction</p>
+              <h2 id="live-best-label">Waiting for webcam</h2>
+              <p class="confidence" id="live-confidence">
+                Start the camera to begin real-time predictions.
+              </p>
+              <p class="detection-note" id="live-detection-note">
+                The model will localize the sign and update the result automatically.
+              </p>
+              <p class="source-pill">Source: webcam live</p>
+              <p class="live-meta" id="live-meta">
+                No live frame analyzed yet.
+              </p>
+            </div>
+
+            <div class="result-layout">
+              <div class="preview-stack">
+                <div class="preview-frame live-preview-frame">
+                  <img
+                    id="live-annotated-image"
+                    src=""
+                    alt="Live analyzed webcam frame"
+                    hidden
+                  />
+                  <div class="live-preview-empty" id="live-preview-empty">
+                    <p class="empty-title">Live frame preview</p>
+                    <p class="empty-copy">
+                      The current analyzed webcam frame with the detection box will
+                      appear here.
+                    </p>
                   </div>
-                  <p class="class-id">Class ID: {{ prediction.class_id }}</p>
-                </li>
-                {% endfor %}
-              </ol>
+                </div>
+
+                <div class="crop-panel">
+                  <p class="crop-title">Detected sign crop</p>
+                  <div class="crop-frame live-crop-frame">
+                    <img id="live-crop-image" src="" alt="Live detected sign crop" hidden />
+                    <div class="live-crop-empty" id="live-crop-empty">
+                      No sign crop available yet.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="ranking-panel">
+                <h3>Live predictions</h3>
+                <ol class="ranking-list" id="live-ranking-list"></ol>
+              </div>
             </div>
           </div>
-          {% else %}
-          <div class="empty-state">
-            <p class="empty-title">Prediction results will appear here.</p>
-            <p class="empty-copy">
-              Submit an image to see the detected label, confidence score and the
-              top alternatives.
-            </p>
-          </div>
-          {% endif %}
         </article>
       </section>
     </main>
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
   </body>
 </html>
-

@@ -8,6 +8,7 @@ from PIL import Image
 from torchvision import transforms
 
 from traffic_signs.model import TrafficSignNet
+from traffic_signs.localization import DetectionBox, detect_traffic_sign
 
 
 @dataclass
@@ -15,6 +16,15 @@ class Prediction:
     class_id: int
     label: str
     score: float
+
+
+@dataclass
+class PredictionResult:
+    predictions: list[Prediction]
+    detection_box: DetectionBox | None
+    used_localized_crop: bool
+    full_image_predictions: list[Prediction]
+    localized_predictions: list[Prediction] | None
 
 
 class TrafficSignPredictor:
@@ -62,7 +72,51 @@ class TrafficSignPredictor:
             )
         return predictions
 
+    @staticmethod
+    def _should_use_localized_crop(
+        full_image_predictions: list[Prediction],
+        localized_predictions: list[Prediction],
+        detection_box: DetectionBox,
+    ) -> bool:
+        full_top = full_image_predictions[0]
+        localized_top = localized_predictions[0]
+
+        if localized_top.label == full_top.label:
+            if localized_top.score >= full_top.score - 0.05:
+                return True
+            return detection_box.area_ratio < 0.28 and localized_top.score >= full_top.score * 0.8
+
+        if detection_box.area_ratio < 0.22 and localized_top.score >= full_top.score + 0.08:
+            return True
+
+        return localized_top.score >= full_top.score + 0.18
+
+    def analyze_pil(self, image: Image.Image, top_k: int = 3) -> PredictionResult:
+        full_image_predictions = self.predict_pil(image, top_k=top_k)
+        detection_box = detect_traffic_sign(image)
+        localized_predictions: list[Prediction] | None = None
+        used_localized_crop = False
+        predictions = full_image_predictions
+
+        if detection_box is not None:
+            localized_image = image.crop(detection_box.as_tuple())
+            localized_predictions = self.predict_pil(localized_image, top_k=top_k)
+            used_localized_crop = self._should_use_localized_crop(
+                full_image_predictions,
+                localized_predictions,
+                detection_box,
+            )
+            if used_localized_crop:
+                predictions = localized_predictions
+
+        return PredictionResult(
+            predictions=predictions,
+            detection_box=detection_box,
+            used_localized_crop=used_localized_crop,
+            full_image_predictions=full_image_predictions,
+            localized_predictions=localized_predictions,
+        )
+
     def predict_file(self, image_path: Path | str, top_k: int = 3) -> list[Prediction]:
         image = Image.open(image_path).convert("RGB")
         return self.predict_pil(image, top_k=top_k)
-
