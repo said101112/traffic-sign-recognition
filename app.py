@@ -60,7 +60,13 @@ def annotate_detection(
     draw.rectangle(detection_box.as_tuple(), outline=outline_color, width=stroke_width)
 
     if label_text:
-        font = ImageFont.load_default()
+        font_size = max(16, round(min(annotated.size) * 0.04))
+        try:
+            font = ImageFont.truetype("arial.ttf", font_size)
+        except OSError:
+            font = ImageFont.load_default()
+
+        # Using textbbox instead of deprecated getsize
         text_bbox = draw.textbbox((0, 0), label_text, font=font)
         text_width = text_bbox[2] - text_bbox[0]
         text_height = text_bbox[3] - text_bbox[1]

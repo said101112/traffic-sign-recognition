@@ -20,28 +20,25 @@ document.addEventListener("DOMContentLoaded", () => {
   const modeButtons = Array.from(document.querySelectorAll("[data-mode-target]"));
   const modePanels = Array.from(document.querySelectorAll("[data-mode-panel]"));
 
-  if (
-    !fileInput ||
-    !startButton ||
-    !stopButton ||
-    !video ||
-    !canvas ||
-    !status ||
-    !cameraPlaceholder ||
-    !uploadResultView ||
-    !liveResultView ||
-    !liveAnnotatedImage ||
-    !livePreviewEmpty ||
-    !liveCropImage ||
-    !liveCropEmpty ||
-    !liveBestLabel ||
-    !liveConfidence ||
-    !liveDetectionNote ||
-    !liveMeta ||
-    !liveRankingList ||
-    modeButtons.length === 0 ||
-    modePanels.length === 0
-  ) {
+  const requiredElements = {
+    fileInput, startButton, stopButton, video, canvas, status, cameraPlaceholder,
+    uploadResultView, liveResultView, liveAnnotatedImage, livePreviewEmpty,
+    liveCropImage, liveCropEmpty, liveBestLabel, liveConfidence, liveDetectionNote,
+    liveMeta, liveRankingList
+  };
+  
+  let missing = false;
+  for (const [name, el] of Object.entries(requiredElements)) {
+    if (!el) {
+      console.error("app.js missing element:", name);
+      missing = true;
+    }
+  }
+  if (modeButtons.length === 0) { console.error("Missing modeButtons"); missing = true; }
+  if (modePanels.length === 0) { console.error("Missing modePanels"); missing = true; }
+
+  if (missing) {
+    console.error("app.js aborting due to missing elements.");
     return;
   }
 
@@ -70,17 +67,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
     liveRankingList.innerHTML = predictions
       .map(
-        (prediction) => `
-          <li>
-            <div class="ranking-row">
-              <span class="label">${prediction.label}</span>
-              <span class="score">${prediction.percentage.toFixed(2)}%</span>
-            </div>
-            <div class="bar-track">
-              <div class="bar-fill" style="width: ${prediction.percentage.toFixed(2)}%;"></div>
-            </div>
-            <p class="class-id">Class ID: ${prediction.class_id}</p>
-          </li>
+        (pred, index) => `
+      <li class="ranking-row">
+        <div class="ranking-meta">
+          <span class="ranking-label">${index + 1}. ${pred.label}</span>
+          <span class="ranking-value">${(pred.score * 100).toFixed(1)}%</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" style="width: ${pred.score * 100}%;"></div>
+        </div>
+        <div class="ranking-class-id">Class ID: ${pred.class_id}</div>
+      </li>
         `
       )
       .join("");
@@ -356,4 +353,103 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   resetLiveResult();
+
+  // ── Drag & Drop support ──────────────────────────────────────────────
+  const dropZone = document.getElementById("drop-zone");
+  const uploadForm = document.querySelector(".upload-form");
+
+  if (dropZone && fileInput && uploadForm) {
+    // Prevent default browser behavior for drag events on the whole page
+    ["dragenter", "dragover", "dragleave", "drop"].forEach((eventName) => {
+      document.body.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      });
+    });
+
+    // Visual feedback
+    ["dragenter", "dragover"].forEach((eventName) => {
+      dropZone.addEventListener(eventName, () => {
+        dropZone.classList.add("drop-zone--active");
+      });
+    });
+
+    ["dragleave", "drop"].forEach((eventName) => {
+      dropZone.addEventListener(eventName, () => {
+        dropZone.classList.remove("drop-zone--active");
+      });
+    });
+
+    dropZone.addEventListener("drop", (e) => {
+      const dt = e.dataTransfer;
+
+      // Case 1: File dropped directly (local file)
+      if (dt.files && dt.files.length > 0) {
+        fileInput.files = dt.files;
+        uploadForm.submit();
+        return;
+      }
+
+      // Case 2: Image dragged from a web page (URL)
+      const imageUrl =
+        dt.getData("text/uri-list") ||
+        dt.getData("text/plain") ||
+        dt.getData("URL");
+
+      if (imageUrl && imageUrl.startsWith("http")) {
+        // Fetch the image from the URL and convert to a File
+        fetch(imageUrl)
+          .then((res) => {
+            if (!res.ok) throw new Error("Failed to fetch image");
+            return res.blob();
+          })
+          .then((blob) => {
+            const ext = blob.type.split("/")[1] || "png";
+            const file = new File([blob], `dragged-image.${ext}`, {
+              type: blob.type,
+            });
+            const container = new DataTransfer();
+            container.items.add(file);
+            fileInput.files = container.files;
+            uploadForm.submit();
+          })
+          .catch((err) => {
+            console.error("Drag-from-web failed:", err);
+            alert(
+              "Could not load that image. Try right-clicking the image, saving it to your computer, then dragging the saved file here."
+            );
+          });
+        return;
+      }
+
+      // Case 3: HTML with embedded <img> tag (some browsers)
+      const htmlData = dt.getData("text/html");
+      if (htmlData) {
+        const match = htmlData.match(/<img[^>]+src=["']([^"']+)["']/i);
+        if (match && match[1] && match[1].startsWith("http")) {
+          fetch(match[1])
+            .then((res) => {
+              if (!res.ok) throw new Error("Failed to fetch image");
+              return res.blob();
+            })
+            .then((blob) => {
+              const ext = blob.type.split("/")[1] || "png";
+              const file = new File([blob], `dragged-image.${ext}`, {
+                type: blob.type,
+              });
+              const container = new DataTransfer();
+              container.items.add(file);
+              fileInput.files = container.files;
+              uploadForm.submit();
+            })
+            .catch((err) => {
+              console.error("Drag-from-html failed:", err);
+              alert(
+                "Could not load that image. Try saving the image first, then dragging the file."
+              );
+            });
+        }
+      }
+    });
+  }
 });
