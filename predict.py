@@ -12,7 +12,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--checkpoint",
         type=Path,
-        default=Path("artifacts/best_model.pt"),
+        default=Path("models/traffic_recognition_best_model.pt"),
         help="Path to the saved model checkpoint.",
     )
     parser.add_argument("--top-k", type=int, default=3)
@@ -33,4 +33,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import random
 import time
@@ -45,6 +46,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--num-workers", type=int, default=0)
     parser.add_argument("--patience", type=int, default=3)
+    parser.add_argument(
+        "--resume-from",
+        type=Path,
+        default=None,
+        help=(
+            "Optional checkpoint to resume from. Full checkpoints resume optimizer, "
+            "scheduler, epoch, and history. Inference-only checkpoints warm-start weights."
+        ),
+    )
     parser.add_argument(
         "--max-train-samples",
         type=int,
@@ -181,6 +191,13 @@ def run_epoch(model, loader, criterion, optimizer, device):
     }
 
 
+def optimizer_to_device(optimizer, device: torch.device) -> None:
+    for state in optimizer.state.values():
+        for key, value in state.items():
+            if isinstance(value, torch.Tensor):
+                state[key] = value.to(device)
+
+
 @torch.no_grad()
 def evaluate(model, loader, criterion, device):
     model.eval()
@@ -211,22 +228,78 @@ def evaluate(model, loader, criterion, device):
 def save_checkpoint(
     output_path: Path,
     model: nn.Module,
+    optimizer,
+    scheduler,
     class_ids: list[int],
     class_names: dict[int, str],
     image_size: int,
     history: list[dict[str, float]],
+    epoch: int,
+    best_val_accuracy: float,
     metrics: dict[str, float],
 ) -> None:
     payload = {
         "model_state_dict": model.state_dict(),
+        "optimizer_state_dict": optimizer.state_dict(),
+        "scheduler_state_dict": scheduler.state_dict(),
         "class_ids": class_ids,
         "class_names": {str(key): value for key, value in class_names.items()},
         "image_size": image_size,
         "normalization": {"mean": MEAN, "std": STD},
         "history": history,
+        "epoch": epoch,
+        "best_val_accuracy": best_val_accuracy,
         "metrics": metrics,
     }
     torch.save(payload, output_path)
+
+
+def load_resume_checkpoint(
+    checkpoint_path: Path,
+    model: nn.Module,
+    optimizer,
+    scheduler,
+    device: torch.device,
+    expected_class_ids: list[int],
+) -> tuple[int, float, list[dict[str, float]], str]:
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+
+    saved_class_ids = checkpoint.get("class_ids")
+    if saved_class_ids is not None and list(saved_class_ids) != list(expected_class_ids):
+        raise ValueError(
+            "Checkpoint classes do not match the current dataset classes. "
+            f"Expected {expected_class_ids}, got {saved_class_ids}."
+        )
+
+    model.load_state_dict(checkpoint["model_state_dict"])
+    history = checkpoint.get("history", [])
+    best_val_accuracy = checkpoint.get(
+        "best_val_accuracy",
+        checkpoint.get("metrics", {}).get("best_val_accuracy", 0.0),
+    )
+
+    has_full_training_state = (
+        "optimizer_state_dict" in checkpoint
+        and "scheduler_state_dict" in checkpoint
+        and "epoch" in checkpoint
+    )
+
+    if has_full_training_state:
+        optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+        optimizer_to_device(optimizer, device)
+        scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+        start_epoch = int(checkpoint["epoch"])
+        resume_mode = "exact"
+    else:
+        start_epoch = int(
+            checkpoint.get("metrics", {}).get(
+                "best_epoch",
+                checkpoint.get("epoch", 0),
+            )
+        )
+        resume_mode = "weights_only"
+
+    return start_epoch, float(best_val_accuracy), history, resume_mode
 
 
 def main() -> None:
@@ -265,11 +338,39 @@ def main() -> None:
     best_val_accuracy = 0.0
     best_epoch = 0
     best_state_dict = None
+    best_optimizer_state = None
+    best_scheduler_state = None
     epochs_without_improvement = 0
     history: list[dict[str, float]] = []
+    start_epoch = 0
+
+    if args.resume_from is not None:
+        start_epoch, best_val_accuracy, history, resume_mode = load_resume_checkpoint(
+            args.resume_from,
+            model,
+            optimizer,
+            scheduler,
+            device,
+            class_ids,
+        )
+        best_state_dict = {
+            key: value.detach().cpu().clone()
+            for key, value in model.state_dict().items()
+        }
+        best_optimizer_state = copy.deepcopy(optimizer.state_dict())
+        best_scheduler_state = copy.deepcopy(scheduler.state_dict())
+        best_epoch = start_epoch
+        if resume_mode == "exact":
+            print(f"Resuming full training state from {args.resume_from} at epoch {start_epoch}.")
+        else:
+            print(
+                f"Warm-starting from {args.resume_from}. "
+                f"Loaded weights only; optimizer/scheduler restarted."
+            )
 
     start_time = time.time()
-    for epoch in range(1, args.epochs + 1):
+    end_epoch = start_epoch + args.epochs
+    for epoch in range(start_epoch + 1, end_epoch + 1):
         train_metrics = run_epoch(model, train_loader, criterion, optimizer, device)
         val_metrics = evaluate(model, val_loader, criterion, device)
         scheduler.step(val_metrics["accuracy"])
@@ -284,12 +385,36 @@ def main() -> None:
         }
         history.append(epoch_metrics)
         print(
-            f"Epoch {epoch}/{args.epochs} "
+            f"Epoch {epoch}/{end_epoch} "
             f"- train_loss={train_metrics['loss']:.4f} "
             f"- train_acc={train_metrics['accuracy']:.4f} "
             f"- val_loss={val_metrics['loss']:.4f} "
             f"- val_acc={val_metrics['accuracy']:.4f} "
             f"- val_macro_f1={val_metrics['macro_f1']:.4f}"
+        )
+
+        checkpoint_metrics = {
+            "best_epoch": best_epoch,
+            "best_val_accuracy": best_val_accuracy,
+            "latest_val_accuracy": val_metrics["accuracy"],
+            "latest_val_macro_f1": val_metrics["macro_f1"],
+            "num_classes": len(class_ids),
+            "num_train_samples": len(train_samples),
+            "num_val_samples": len(val_samples),
+            "num_test_samples": len(test_samples),
+        }
+        save_checkpoint(
+            args.output_dir / "last_checkpoint.pt",
+            model,
+            optimizer,
+            scheduler,
+            class_ids,
+            label_names,
+            args.image_size,
+            history,
+            epoch,
+            best_val_accuracy,
+            checkpoint_metrics,
         )
 
         if val_metrics["accuracy"] > best_val_accuracy:
@@ -299,6 +424,8 @@ def main() -> None:
                 key: value.detach().cpu().clone()
                 for key, value in model.state_dict().items()
             }
+            best_optimizer_state = copy.deepcopy(optimizer.state_dict())
+            best_scheduler_state = copy.deepcopy(scheduler.state_dict())
             epochs_without_improvement = 0
         else:
             epochs_without_improvement += 1
@@ -341,15 +468,33 @@ def main() -> None:
         "num_test_samples": len(test_samples),
     }
 
-    save_checkpoint(
-        args.output_dir / "best_model.pt",
-        model,
-        class_ids,
-        label_names,
-        args.image_size,
-        history,
-        metrics_summary,
-    )
+    inference_payload = {
+        "model_state_dict": model.state_dict(),
+        "class_ids": class_ids,
+        "class_names": {str(key): value for key, value in label_names.items()},
+        "image_size": args.image_size,
+        "normalization": {"mean": MEAN, "std": STD},
+        "history": history,
+        "epoch": best_epoch,
+        "best_val_accuracy": best_val_accuracy,
+        "metrics": metrics_summary,
+    }
+    torch.save(inference_payload, args.output_dir / "best_model.pt")
+    if best_optimizer_state is not None and best_scheduler_state is not None:
+        best_resume_payload = {
+            "model_state_dict": best_state_dict,
+            "optimizer_state_dict": best_optimizer_state,
+            "scheduler_state_dict": best_scheduler_state,
+            "class_ids": class_ids,
+            "class_names": {str(key): value for key, value in label_names.items()},
+            "image_size": args.image_size,
+            "normalization": {"mean": MEAN, "std": STD},
+            "history": history,
+            "epoch": best_epoch,
+            "best_val_accuracy": best_val_accuracy,
+            "metrics": metrics_summary,
+        }
+        torch.save(best_resume_payload, args.output_dir / "best_resume_checkpoint.pt")
     (args.output_dir / "history.json").write_text(
         json.dumps(history, indent=2),
         encoding="utf-8",
@@ -373,4 +518,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

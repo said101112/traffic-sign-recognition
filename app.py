@@ -15,7 +15,7 @@ from traffic_signs.localization import DetectionBox
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
-CHECKPOINT_PATH = Path("artifacts/best_model.pt")
+CHECKPOINT_PATH = Path("models/traffic_recognition_best_model.pt")
 
 
 @lru_cache(maxsize=1)
