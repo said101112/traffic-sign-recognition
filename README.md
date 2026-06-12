@@ -43,13 +43,27 @@ traffic-sign-recognition/
 - The training pipeline uses the real class folders inside `Dataset/Train/`
 - Obvious `- Copie` duplicates are ignored automatically
 
-## Train
+## Quick Start
+
+### 1. Analyze the dataset
+
+```bash
+python analyze_dataset.py
+```
+
+### 2. Train the model
 
 ```bash
 python train.py --epochs 30 --batch-size 256 --eval-batch-size 256 --patience 6
 ```
 
 Training artifacts are written to `artifacts/`.
+
+- `best_model.pt` - Best training checkpoint
+- `metrics.json` - Final evaluation metrics
+- `history.json` - Per-epoch training history
+- `classification_report.json` - Per-class precision/recall/F1
+- `dataset_report.json` - Dataset audit report
 
 ## Final Training Run
 
@@ -84,7 +98,7 @@ python train.py \
 - best epoch: `18`
 - total training time: `1446.58 s` (`24 min 07 s`)
 
-## Predict One Image
+### 3. Predict one image
 
 ```bash
 python predict.py --image Dataset/Test/00000.png
@@ -96,7 +110,7 @@ By default, prediction uses:
 models/traffic_recognition_best_model.pt
 ```
 
-## Launch the App
+### 4. Launch the app
 
 ```bash
 python app.py
