@@ -2,6 +2,8 @@
 
 A complete traffic sign recognition system with a CNN classifier for 43 classes, object localization, and a web interface for image upload and live webcam analysis.
 
+Traffic Sign Recognition, réalisé par NICHAN Said et MOUKHLISS Riyad à l’ENSA Tanger, dans le cadre du module de Traitement d’images, supervisé par Pr. Abdelmonaime LACHKAR.
+
 ## Features
 
 - **CNN Classification** - Custom `TrafficSignNet` for 43 traffic sign classes
